@@ -8,6 +8,9 @@
 
 mod config;
 mod error;
+mod instance;
+#[cfg(test)]
+mod instance_tests;
 pub mod msgs;
 mod receiver;
 mod sender;
@@ -17,6 +20,7 @@ pub use config::{
     SenderConfigBuilder, SenderConfigBuilderError,
 };
 pub use error::{ReceiverError, SenderError};
+pub use instance::{InstanceId, InstanceIds};
 use mpz_core::Block;
 pub use receiver::{Receiver, state as receiver_state};
 pub use sender::{Sender, state as sender_state};
@@ -173,8 +177,8 @@ mod tests {
     ) {
         let count = 128;
 
-        let sender = Sender::new(SenderConfig::default(), delta, Block::ZERO);
-        let receiver = Receiver::new(ReceiverConfig::default(), Block::ZERO);
+        let sender = Sender::new(SenderConfig::default(), delta, InstanceId::SOLO);
+        let receiver = Receiver::new(ReceiverConfig::default(), InstanceId::SOLO);
 
         let mut sender = sender.setup(sender_seeds);
         let mut receiver = receiver.setup(receiver_seeds);
@@ -226,8 +230,8 @@ mod tests {
 
         let count = sender_config.batch_size() * 3;
 
-        let sender = Sender::new(sender_config, delta, Block::ZERO);
-        let receiver = Receiver::new(receiver_config, Block::ZERO);
+        let sender = Sender::new(sender_config, delta, InstanceId::SOLO);
+        let receiver = Receiver::new(receiver_config, InstanceId::SOLO);
 
         let mut sender = sender.setup(sender_seeds);
         let mut receiver = receiver.setup(receiver_seeds);
@@ -276,8 +280,8 @@ mod tests {
     ) {
         let count = 128;
 
-        let sender = Sender::new(SenderConfig::default(), delta, Block::ZERO);
-        let receiver = Receiver::new(ReceiverConfig::default(), Block::ZERO);
+        let sender = Sender::new(SenderConfig::default(), delta, InstanceId::SOLO);
+        let receiver = Receiver::new(ReceiverConfig::default(), InstanceId::SOLO);
 
         let mut sender = sender.setup(sender_seeds);
         let mut receiver = receiver.setup(receiver_seeds);
@@ -308,8 +312,8 @@ mod tests {
     ) {
         let count = 128;
 
-        let sender = Sender::new(SenderConfig::default(), delta, Block::ZERO);
-        let receiver = Receiver::new(ReceiverConfig::default(), Block::ZERO);
+        let sender = Sender::new(SenderConfig::default(), delta, InstanceId::SOLO);
+        let receiver = Receiver::new(ReceiverConfig::default(), InstanceId::SOLO);
 
         let mut sender = sender.setup(sender_seeds);
         let mut receiver = receiver.setup(receiver_seeds);
@@ -340,8 +344,8 @@ mod tests {
     ) {
         let count = 128;
 
-        let sender = Sender::new(SenderConfig::default(), delta, Block::ZERO);
-        let receiver = Receiver::new(ReceiverConfig::default(), Block::ZERO);
+        let sender = Sender::new(SenderConfig::default(), delta, InstanceId::SOLO);
+        let receiver = Receiver::new(ReceiverConfig::default(), InstanceId::SOLO);
 
         let mut sender = sender.setup(sender_seeds);
         let mut receiver = receiver.setup(receiver_seeds);

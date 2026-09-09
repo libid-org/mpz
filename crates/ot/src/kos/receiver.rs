@@ -5,7 +5,10 @@ use serio::{SinkExt as _, stream::IoStreamExt};
 use mpz_common::{Context, ContextError, Flush, future::MaybeDone};
 use mpz_core::Block;
 use mpz_ot_core::{
-    kos::{Receiver as Core, ReceiverConfig, ReceiverError as CoreError, receiver_state as state},
+    kos::{
+        InstanceId, Receiver as Core, ReceiverConfig, ReceiverError as CoreError,
+        receiver_state as state,
+    },
     ot::OTSender,
     rcot::{RCOTReceiver, RCOTReceiverOutput},
 };
@@ -40,9 +43,9 @@ impl<BaseOT> Receiver<BaseOT> {
     /// # Arguments
     ///
     /// * `config` - The Receiver's configuration.
-    /// * `instance_id` - Domain separator; must match the paired sender.
+    /// * `instance_id` - Domain separator. Must equal the paired sender's.
     /// * `base_ot` - Base OT.
-    pub fn new(config: ReceiverConfig, instance_id: Block, base_ot: BaseOT) -> Self {
+    pub fn new(config: ReceiverConfig, instance_id: InstanceId, base_ot: BaseOT) -> Self {
         Self {
             state: State::Initialized {
                 base_ot,
