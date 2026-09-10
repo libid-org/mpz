@@ -19,7 +19,25 @@ use crate::{Context, ContextId, mux::Mux};
 /// A work-stealing async executor.
 #[derive(Debug)]
 pub struct Executor {
+    handle: ExecutorHandle,
+}
+
+/// Keeps the executor alive while contexts can still spawn tasks.
+#[derive(Clone, Debug)]
+pub(crate) struct ExecutorHandle {
     inner: Arc<Inner>,
+    _shutdown: Arc<ShutdownGuard>,
+}
+
+#[derive(Debug)]
+struct ShutdownGuard {
+    inner: Arc<Inner>,
+}
+
+impl Drop for ShutdownGuard {
+    fn drop(&mut self) {
+        self.inner.shutdown();
+    }
 }
 
 /// Per-worker parking state.
@@ -57,6 +75,27 @@ impl std::fmt::Debug for Inner {
             .field("workers", &self.workers.len())
             .field("shutdown", &self.shutdown)
             .finish_non_exhaustive()
+    }
+}
+
+impl Inner {
+    fn shutdown(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+
+        // Drain the injector before unparking workers. Any push that races
+        // with this drain is handled by the shutdown check in the schedule
+        // callback (see `spawn_on`), which drops the runnable.
+        loop {
+            match self.injector.steal() {
+                Steal::Success(_) => continue,
+                Steal::Empty => break,
+                Steal::Retry => continue,
+            }
+        }
+
+        for w in self.workers.iter() {
+            w.unparker.unpark();
+        }
     }
 }
 
@@ -171,7 +210,14 @@ impl ExecutorBuilder {
                 .expect("failed to spawn worker thread");
         }
 
-        Executor { inner }
+        Executor {
+            handle: ExecutorHandle {
+                _shutdown: Arc::new(ShutdownGuard {
+                    inner: inner.clone(),
+                }),
+                inner,
+            },
+        }
     }
 }
 
@@ -269,27 +315,12 @@ impl Executor {
     /// a [`Runnable`] cancels its task, so awaiters of `Task<T>` propagate
     /// cancellation rather than hanging on a worker that has exited.
     pub fn shutdown(&self) {
-        self.inner.shutdown.store(true, Ordering::SeqCst);
-
-        // Drain the injector before unparking workers. Any push that races
-        // with this drain is handled by the shutdown check in the schedule
-        // callback (see `spawn_on`), which drops the runnable.
-        loop {
-            match self.inner.injector.steal() {
-                Steal::Success(_) => continue,
-                Steal::Empty => break,
-                Steal::Retry => continue,
-            }
-        }
-
-        for w in self.inner.workers.iter() {
-            w.unparker.unpark();
-        }
+        self.handle.inner.shutdown();
     }
 
     /// Returns `true` if the executor has been shut down.
     pub fn is_shutdown(&self) -> bool {
-        self.inner.shutdown.load(Ordering::SeqCst)
+        self.handle.inner.shutdown.load(Ordering::SeqCst)
     }
 
     /// Creates a new context.
@@ -297,31 +328,29 @@ impl Executor {
     /// Each context produced by an executor is given a distinct ID under the
     /// executor's configured prefix.
     pub fn new_context(&self) -> Result<Context, std::io::Error> {
-        let index = self.inner.next_context.fetch_add(1, Ordering::Relaxed);
-        let id = self.inner.prefix.child(index);
-        let io = self.inner.mux.open(id.as_ref())?;
+        let index = self
+            .handle
+            .inner
+            .next_context
+            .fetch_add(1, Ordering::Relaxed);
+        let id = self.handle.inner.prefix.child(index);
+        let io = self.handle.inner.mux.open(id.as_ref())?;
         Ok(Context::with_executor(
             id,
             io,
-            self.inner.mux.clone(),
-            self.inner.clone(),
+            self.handle.inner.mux.clone(),
+            self.handle.clone(),
         ))
     }
 }
 
-impl Drop for Executor {
-    fn drop(&mut self) {
-        self.shutdown();
-    }
-}
-
 /// Spawns a future on the given executor inner.
-pub(crate) fn spawn_on<F>(inner: &Arc<Inner>, future: F) -> Task<F::Output>
+pub(crate) fn spawn_on<F>(handle: &ExecutorHandle, future: F) -> Task<F::Output>
 where
     F: std::future::Future + Send + 'static,
     F::Output: Send + 'static,
 {
-    let inner = Arc::clone(inner);
+    let inner = Arc::clone(&handle.inner);
     let schedule = move |runnable: Runnable| {
         // After shutdown, no worker will run this. Dropping the runnable
         // cancels the task so the awaiter doesn't hang. SeqCst pairs with
@@ -374,6 +403,23 @@ mod tests {
         assert_eq!(a + b, 42);
 
         executor.shutdown();
+    }
+
+    #[test]
+    fn test_context_outlives_executor() {
+        let (mux_a, _mux_b) = test_framed_mux(1024);
+        let executor = Executor::builder().num_threads(2).build(mux_a);
+        let mut ctx = executor.new_context().unwrap();
+
+        drop(executor);
+
+        let output = futures::executor::block_on(ctx.join(
+            |_ctx| Box::pin(async move { 21 }),
+            |_ctx| Box::pin(async move { 21 }),
+        ))
+        .unwrap();
+
+        assert_eq!(output, (21, 21));
     }
 
     #[test]
