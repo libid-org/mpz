@@ -19,7 +19,7 @@ pub use test::{
     test_mt_context, test_mt_context_with_spawn, test_st_context,
 };
 
-use crate::{ContextId, executor::Inner, io::Io, mux::Mux};
+use crate::{ContextId, executor::ExecutorHandle, io::Io, mux::Mux};
 
 /// A task execution context.
 ///
@@ -42,7 +42,7 @@ enum Mode {
     Single,
     Multi {
         mux: Arc<dyn Mux + Send + Sync>,
-        executor: Option<Arc<Inner>>,
+        executor: Option<ExecutorHandle>,
     },
 }
 
@@ -122,7 +122,7 @@ impl Context {
         id: ContextId,
         io: Io,
         mux: Arc<dyn Mux + Send + Sync>,
-        executor: Arc<Inner>,
+        executor: ExecutorHandle,
     ) -> Self {
         Self {
             id,
@@ -342,7 +342,7 @@ impl Context {
         Ok(future::try_join4(task_a, task_b, task_c, task_d).await)
     }
 
-    fn executor(&self) -> Option<&Arc<Inner>> {
+    fn executor(&self) -> Option<&ExecutorHandle> {
         if let Mode::Multi { executor, .. } = &self.mode {
             executor.as_ref()
         } else {
@@ -354,7 +354,7 @@ impl Context {
 /// Spawns `fut` on `executor` if one is provided, otherwise yields the future
 /// as-is. The output type is identical either way.
 fn run<F>(
-    executor: Option<&Arc<Inner>>,
+    executor: Option<&ExecutorHandle>,
     fut: F,
 ) -> impl std::future::Future<Output = F::Output> + Send
 where
