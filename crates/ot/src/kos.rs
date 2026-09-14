@@ -13,8 +13,8 @@ pub use receiver::Receiver;
 pub use sender::Sender;
 
 pub use mpz_ot_core::kos::{
-    ReceiverConfig, ReceiverConfigBuilder, ReceiverConfigBuilderError, SenderConfig,
-    SenderConfigBuilder, SenderConfigBuilderError, msgs,
+    InstanceId, InstanceIds, ReceiverConfig, ReceiverConfigBuilder, ReceiverConfigBuilderError,
+    SenderConfig, SenderConfigBuilder, SenderConfigBuilderError, msgs,
 };
 
 #[cfg(test)]
@@ -31,8 +31,13 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0);
         let (base_sender, base_receiver) = ideal_ot();
         let delta = Block::random(&mut rng);
-        let sender = Sender::new(SenderConfig::default(), delta, Block::ZERO, base_receiver);
-        let receiver = Receiver::new(ReceiverConfig::default(), Block::ZERO, base_sender);
+        let sender = Sender::new(
+            SenderConfig::default(),
+            delta,
+            InstanceId::SOLO,
+            base_receiver,
+        );
+        let receiver = Receiver::new(ReceiverConfig::default(), InstanceId::SOLO, base_sender);
 
         test_rcot(sender, receiver, 128, 1).await;
     }

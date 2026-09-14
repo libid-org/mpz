@@ -2,13 +2,13 @@ use std::{collections::VecDeque, mem};
 
 use crate::{
     TransferId,
-    kos::{CSP, Check, Extend, ReceiverConfig, ReceiverError, SSP},
+    kos::{CSP, Check, Extend, InstanceId, ReceiverConfig, ReceiverError, SSP},
     rcot::{RCOTReceiver, RCOTReceiverOutput},
 };
 
 use itybity::{BitLength, FromBitIterator, IntoBitIterator, IntoBits};
 use mpz_common::future::{MaybeDone, Sender, new_output};
-use mpz_core::{Block, aes::FIXED_KEY_AES, prg::Prg};
+use mpz_core::{Block, prg::Prg};
 
 use rand::{Rng as _, SeedableRng};
 use rand_core::RngCore;
@@ -23,13 +23,17 @@ struct Queued {
 }
 
 /// KOS15 receiver.
-#[derive(Debug, Default)]
+///
+/// Deliberately not [`Default`]: a receiver cannot be built without stating the
+/// [`InstanceId`] it shares with its sender, and defaulting that id is the
+/// mistake the id exists to prevent. Use [`Receiver::new`].
+#[derive(Debug)]
 pub struct Receiver<T: state::State = state::Initialized> {
     config: ReceiverConfig,
     alloc: usize,
     transfer_id: TransferId,
     queue: VecDeque<Queued>,
-    instance_id: Block,
+    instance_id: InstanceId,
     state: T,
 }
 
@@ -49,8 +53,10 @@ impl Receiver {
     /// # Arguments
     ///
     /// * `config` - The Receiver's configuration
-    /// * `instance_id` - Domain separator; must match the paired sender.
-    pub fn new(config: ReceiverConfig, instance_id: Block) -> Self {
+    /// * `instance_id` - Domain separator. Must equal the paired sender's. Use
+    ///   [`InstanceId::SOLO`] when the sender's `delta` drives exactly one
+    ///   instance.
+    pub fn new(config: ReceiverConfig, instance_id: InstanceId) -> Self {
         Receiver {
             config,
             // We need to extend SSP OTs for the consistency check.
@@ -81,7 +87,14 @@ impl Receiver {
                 rngs: seeds
                     .into_iter()
                     .map(|seeds| {
-                        seeds.map(|seed| Prg::from_seed(FIXED_KEY_AES.tccr(instance_id, seed)))
+                        seeds.map(|seed| {
+                            // See the sender: instances are separated by PRG
+                            // stream, so their columns cannot coincide even
+                            // when the base OT seeds are identical.
+                            let mut prg = Prg::from_seed(seed);
+                            prg.set_stream_id(instance_id.to_u64());
+                            prg
+                        })
                     })
                     .collect(),
                 msgs: Vec::default(),

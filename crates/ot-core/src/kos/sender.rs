@@ -2,13 +2,13 @@ use std::{collections::VecDeque, mem};
 
 use crate::{
     TransferId,
-    kos::{CSP, Check, Extend, SSP, SenderConfig, SenderError},
+    kos::{CSP, Check, Extend, InstanceId, SSP, SenderConfig, SenderError},
     rcot::{RCOTSender, RCOTSenderOutput},
 };
 
 use itybity::ToBits;
 use mpz_common::future::{MaybeDone, Sender as OutputSender, new_output};
-use mpz_core::{Block, aes::FIXED_KEY_AES, prg::Prg};
+use mpz_core::{Block, prg::Prg};
 
 use rand::{Rng as _, SeedableRng, rng};
 
@@ -35,7 +35,7 @@ pub struct Sender<T: state::State = state::Initialized> {
     queue: VecDeque<Queued>,
     transfer_id: TransferId,
     delta: Block,
-    instance_id: Block,
+    instance_id: InstanceId,
     state: T,
 }
 
@@ -56,9 +56,10 @@ impl Sender<state::Initialized> {
     ///
     /// * `config` - Sender's configuration.
     /// * `delta` - Global COT correlation.
-    /// * `instance_id` - Domain separator; must match the paired receiver and
-    ///   differ across instances that reuse `delta`.
-    pub fn new(config: SenderConfig, delta: Block, instance_id: Block) -> Self {
+    /// * `instance_id` - Domain separator. Must equal the paired receiver's,
+    ///   and differ from every other instance sharing `delta`. Use
+    ///   [`InstanceId::SOLO`] when `delta` drives exactly one instance.
+    pub fn new(config: SenderConfig, delta: Block, instance_id: InstanceId) -> Self {
         Sender {
             config,
             // We need to extend SSP OTs for the consistency check.
@@ -90,7 +91,16 @@ impl Sender<state::Initialized> {
             state: state::Extension {
                 rngs: seeds
                     .into_iter()
-                    .map(|seed| Prg::from_seed(FIXED_KEY_AES.tccr(instance_id, seed)))
+                    .map(|seed| {
+                        // Separate the instances by PRG stream rather than by
+                        // seed: the stream id enters the AES-CTR input block,
+                        // so distinct instances address disjoint counter
+                        // blocks and their columns cannot coincide, whatever
+                        // seeds the base OT produced.
+                        let mut prg = Prg::from_seed(seed);
+                        prg.set_stream_id(instance_id.to_u64());
+                        prg
+                    })
                     .collect(),
                 keys: Vec::default(),
                 extended: false,

@@ -3,7 +3,9 @@ use itybity::IntoBits;
 use mpz_common::{Context, ContextError, Flush, future::MaybeDone};
 use mpz_core::Block;
 use mpz_ot_core::{
-    kos::{Sender as Core, SenderConfig, SenderError as CoreError, sender_state as state},
+    kos::{
+        InstanceId, Sender as Core, SenderConfig, SenderError as CoreError, sender_state as state,
+    },
     ot::{OTReceiver, OTReceiverOutput},
     rcot::{RCOTSender, RCOTSenderOutput},
 };
@@ -40,10 +42,15 @@ impl<BaseOT> Sender<BaseOT> {
     ///
     /// * `config` - The Sender's configuration.
     /// * `delta` - Global COT correlation.
-    /// * `instance_id` - Domain separator; must match the paired receiver and
-    ///   differ across instances that reuse `delta`.
+    /// * `instance_id` - Domain separator. Must equal the paired receiver's,
+    ///   and differ from every other instance sharing `delta`.
     /// * `base_ot` - Base OT.
-    pub fn new(config: SenderConfig, delta: Block, instance_id: Block, base_ot: BaseOT) -> Self {
+    pub fn new(
+        config: SenderConfig,
+        delta: Block,
+        instance_id: InstanceId,
+        base_ot: BaseOT,
+    ) -> Self {
         Self {
             state: State::Initialized {
                 base_ot,

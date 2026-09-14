@@ -59,8 +59,10 @@ fn kos(c: &mut Criterion) {
                 .unwrap();
 
             b.iter(|| {
-                let sender = kos::Sender::new(kos::SenderConfig::default(), delta);
-                let receiver = kos::Receiver::new(kos::ReceiverConfig::default());
+                let sender =
+                    kos::Sender::new(kos::SenderConfig::default(), delta, kos::InstanceId::SOLO);
+                let receiver =
+                    kos::Receiver::new(kos::ReceiverConfig::default(), kos::InstanceId::SOLO);
 
                 let mut sender = sender.setup(sender_seeds);
                 let mut receiver = receiver.setup(receiver_seeds);
